@@ -1,0 +1,62 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 744 1039" role="img" aria-label="Card back background">
+  <defs>
+    <radialGradient id="blueField" cx="46%" cy="44%" r="72%">
+      <stop offset="0" stop-color="#74c9ff"/>
+      <stop offset=".32" stop-color="#1e82ca"/>
+      <stop offset=".68" stop-color="#0d4e9c"/>
+      <stop offset="1" stop-color="#062f6c"/>
+    </radialGradient>
+    <radialGradient id="ballTop" cx="38%" cy="24%" r="78%">
+      <stop offset="0" stop-color="#fff2c4"/>
+      <stop offset=".28" stop-color="#ef8d24"/>
+      <stop offset=".72" stop-color="#bd4f0f"/>
+      <stop offset="1" stop-color="#7a2305"/>
+    </radialGradient>
+    <radialGradient id="ballBottom" cx="39%" cy="24%" r="80%">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset=".58" stop-color="#cfd8df"/>
+      <stop offset="1" stop-color="#6f7a82"/>
+    </radialGradient>
+    <filter id="softShadow" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="16" stdDeviation="14" flood-color="#001e45" flood-opacity=".44"/>
+    </filter>
+    <filter id="logoShadow" x="-20%" y="-30%" width="140%" height="170%">
+      <feDropShadow dx="4" dy="6" stdDeviation="3" flood-color="#001b4e" flood-opacity=".82"/>
+    </filter>
+  </defs>
+
+  <rect width="744" height="1039" rx="38" fill="#071f66"/>
+  <rect x="34" y="34" width="676" height="971" rx="26" fill="url(#blueField)"/>
+
+  <g opacity=".72">
+    <path d="M153 174c141-108 302-102 421-21-125-28-247-15-360 52-103 60-139 141-124 233-47-102-16-194 63-264Z" fill="#ffffff" opacity=".46"/>
+    <path d="M590 820c-143 112-308 108-430 24 132 29 255 14 371-56 106-64 139-153 116-248 57 108 33 206-57 280Z" fill="#ffffff" opacity=".36"/>
+    <path d="M126 746c98 90 225 116 368 70 130-42 192-116 187-216 36 113-20 209-154 279-153 80-303 37-401-133Z" fill="#cceeff" opacity=".42"/>
+    <path d="M618 282c-112-82-241-96-381-36-118 50-174 128-161 221-49-111 8-207 143-274 150-75 305-43 399 89Z" fill="#99dbff" opacity=".36"/>
+  </g>
+
+  <g filter="url(#logoShadow)" font-family="Arial Black, Impact, sans-serif" font-weight="900" text-anchor="middle">
+    <text x="374" y="176" font-size="88" fill="#ffcc29" stroke="#0664b8" stroke-width="12" paint-order="stroke fill" transform="rotate(-8 374 176)">POKEMON</text>
+    <text x="374" y="910" font-size="88" fill="#ffcc29" stroke="#0664b8" stroke-width="12" paint-order="stroke fill" transform="rotate(172 374 910)">POKEMON</text>
+  </g>
+
+  <g filter="url(#softShadow)">
+    <circle cx="372" cy="511" r="172" fill="#111821"/>
+    <clipPath id="ballClip">
+      <circle cx="372" cy="511" r="154"/>
+    </clipPath>
+    <g clip-path="url(#ballClip)">
+      <path d="M197 490c86-95 241-127 349-46 19 15 33 29 47 50v-169H197Z" fill="url(#ballTop)"/>
+      <path d="M197 518c93 82 254 97 379 5 8-6 13-11 17-15v189H197Z" fill="url(#ballBottom)"/>
+      <path d="M185 472c92 67 255 87 387-17 16-12 29-26 41-41v82c-91 91-267 118-428 22Z" fill="#0f161f"/>
+      <path d="M196 514c111 76 263 78 400-18v51c-127 89-293 88-400 12Z" fill="#0f161f"/>
+      <path d="M238 348c68-52 170-60 249-10 64 41 88 88 95 135-69-93-208-127-358-72Z" fill="#fff" opacity=".42"/>
+    </g>
+    <circle cx="372" cy="511" r="160" fill="none" stroke="#101721" stroke-width="14"/>
+    <circle cx="372" cy="511" r="51" fill="#101721"/>
+    <circle cx="372" cy="511" r="34" fill="#e7f4ff"/>
+    <circle cx="372" cy="511" r="22" fill="#8edaff"/>
+  </g>
+
+  <rect x="34" y="34" width="676" height="971" rx="26" fill="none" stroke="#d8f4ff" stroke-width="6" opacity=".28"/>
+</svg>

@@ -1,0 +1,85 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Default tails coin face">
+  <defs>
+    <radialGradient id="face" cx="35%" cy="26%" r="78%">
+      <stop offset="0" stop-color="#252a34"/>
+      <stop offset=".42" stop-color="#090c12"/>
+      <stop offset=".82" stop-color="#020308"/>
+      <stop offset="1" stop-color="#000104"/>
+    </radialGradient>
+    <linearGradient id="softLight" x1="92" x2="420" y1="70" y2="430" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffffff" stop-opacity=".12"/>
+      <stop offset=".32" stop-color="#ffffff" stop-opacity=".02"/>
+      <stop offset="1" stop-color="#000000" stop-opacity=".54"/>
+    </linearGradient>
+    <filter id="emboss" x="-12%" y="-12%" width="124%" height="124%">
+      <feDropShadow dx="-2" dy="-2" stdDeviation="1.2" flood-color="#303743" flood-opacity=".48"/>
+      <feDropShadow dx="3" dy="4" stdDeviation="1.6" flood-color="#000000" flood-opacity=".72"/>
+    </filter>
+  </defs>
+
+  <rect width="512" height="512" fill="#000104"/>
+  <circle cx="256" cy="256" r="234" fill="url(#face)"/>
+  <circle cx="256" cy="256" r="234" fill="url(#softLight)"/>
+
+  <g fill="none" stroke-linecap="round" filter="url(#emboss)">
+    <circle cx="256" cy="256" r="210" stroke="#1d222c" stroke-width="16"/>
+    <circle cx="256" cy="256" r="176" stroke="#171c25" stroke-width="13"/>
+    <circle cx="256" cy="256" r="144" stroke="#111720" stroke-width="10"/>
+  </g>
+
+  <g filter="url(#emboss)">
+    <path
+      d="M102 224c48-37 113-56 177-47 64 9 119 44 154 95"
+      fill="none"
+      stroke="#202631"
+      stroke-width="32"
+      stroke-linecap="round"
+    />
+    <path
+      d="M105 294c56 34 128 46 196 30 52-12 98-40 132-80"
+      fill="none"
+      stroke="#070a10"
+      stroke-width="32"
+      stroke-linecap="round"
+      opacity=".82"
+    />
+    <path
+      d="M135 208 332 300"
+      fill="none"
+      stroke="#242a35"
+      stroke-width="24"
+      stroke-linecap="round"
+    />
+    <circle cx="328" cy="278" r="48" fill="#202631"/>
+    <circle cx="328" cy="278" r="27" fill="#06080d"/>
+  </g>
+
+  <g transform="translate(104 318) rotate(-13)" filter="url(#emboss)">
+    <text
+      x="0"
+      y="0"
+      fill="#06080d"
+      stroke="#242a35"
+      stroke-width="5"
+      paint-order="stroke fill"
+      font-family="Arial Black, Impact, sans-serif"
+      font-size="58"
+      font-weight="900"
+    >COIN</text>
+    <text
+      x="58"
+      y="54"
+      fill="#06080d"
+      stroke="#242a35"
+      stroke-width="5"
+      paint-order="stroke fill"
+      font-family="Arial Black, Impact, sans-serif"
+      font-size="54"
+      font-weight="900"
+    >BURST</text>
+  </g>
+
+  <circle cx="256" cy="256" r="234" fill="none" stroke="#000104" stroke-width="28"/>
+  <circle cx="256" cy="256" r="226" fill="none" stroke="#252b35" stroke-width="7" opacity=".72"/>
+  <path d="M96 136c91-69 234-82 330-16-111-18-221-12-330 16Z" fill="#ffffff" opacity=".06"/>
+</svg>

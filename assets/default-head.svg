@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Default heads coin face">
+  <defs>
+    <clipPath id="coinClip">
+      <circle cx="256" cy="256" r="226"/>
+    </clipPath>
+    <linearGradient id="frontShine" x1="92" x2="404" y1="72" y2="408" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#fff" stop-opacity=".76"/>
+      <stop offset=".28" stop-color="#fff" stop-opacity=".18"/>
+      <stop offset="1" stop-color="#fff" stop-opacity="0"/>
+    </linearGradient>
+    <radialGradient id="frontShade" cx="34%" cy="24%" r="74%">
+      <stop offset="0" stop-color="#fff" stop-opacity=".24"/>
+      <stop offset=".58" stop-color="#fff" stop-opacity="0"/>
+      <stop offset="1" stop-color="#000" stop-opacity=".2"/>
+    </radialGradient>
+  </defs>
+  <rect width="512" height="512" fill="#070a10"/>
+  <g clip-path="url(#coinClip)">
+    <rect width="512" height="252" fill="#ed3042"/>
+    <rect y="252" width="512" height="260" fill="#f7fbff"/>
+    <rect y="235" width="512" height="42" fill="#0b1018"/>
+    <path d="M64 120c112-92 278-94 384-8-116-28-254-22-384 8Z" fill="url(#frontShine)"/>
+    <rect width="512" height="512" fill="url(#frontShade)"/>
+  </g>
+  <circle cx="256" cy="256" r="232" fill="none" stroke="#0b1018" stroke-width="34"/>
+  <circle cx="256" cy="256" r="232" fill="none" stroke="#f3f7ff" stroke-width="8" opacity=".2"/>
+  <circle cx="256" cy="256" r="67" fill="#0b1018"/>
+  <circle cx="256" cy="256" r="42" fill="#f7fbff"/>
+  <circle cx="256" cy="256" r="23" fill="#cdd8e5"/>
+</svg>

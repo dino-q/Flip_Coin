@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Coin Burst</title>
+    <meta
+      name="description"
+      content="A static drag-and-release coin flip mini game with local custom images and stats."
+    >
+    <link rel="stylesheet" href="style.css">
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <a class="brand" href="./" aria-label="Coin Burst">
+          <span class="brand-mark" aria-hidden="true"></span>
+          <span>
+            <span class="eyebrow">TCG FLIP ARENA</span>
+            <strong>Coin Burst</strong>
+          </span>
+        </a>
+
+        <div class="top-actions" aria-label="快速操作">
+          <button class="icon-button" id="quickFlipButton" type="button" aria-label="快速擲硬幣">
+            <span aria-hidden="true">擲</span>
+          </button>
+          <button class="quiet-button" id="soundToggle" type="button" aria-pressed="true">
+            音效 ON
+          </button>
+        </div>
+      </header>
+
+      <main class="game-layout">
+        <section class="battle-stage" id="playfield" aria-label="擲硬幣區域">
+          <div class="board-art" aria-hidden="true">
+            <span class="table-card table-card-a"></span>
+            <span class="table-card table-card-b"></span>
+            <span class="table-card table-card-c"></span>
+            <span class="table-card table-card-d"></span>
+            <span class="table-card table-card-e"></span>
+            <span class="table-card table-card-f"></span>
+          </div>
+          <div class="battle-haze" aria-hidden="true"></div>
+          <div class="rule-strip" id="ruleStrip" contenteditable="true" spellcheck="false">靠著公平的50%決鬥吧!</div>
+          <div class="result-badge" id="resultBanner" aria-live="polite">READY</div>
+          <div class="field-ring" aria-hidden="true"></div>
+
+          <div class="coin-shadow" id="coinShadow" aria-hidden="true"></div>
+          <div class="coin-scene" id="coinScene">
+            <div class="coin" id="coin" role="button" tabindex="0" aria-label="擲硬幣">
+              <div class="coin-rim" id="coinRim" aria-hidden="true"></div>
+              <div class="coin-face coin-face-heads">
+                <img id="headsImage" src="assets/default-head.svg" alt="硬幣正面">
+              </div>
+              <div class="coin-face coin-face-tails">
+                <img id="tailsImage" src="assets/default-tail.svg" alt="硬幣反面">
+              </div>
+            </div>
+          </div>
+
+          <div class="particles" id="particles" aria-hidden="true"></div>
+        </section>
+
+        <aside class="control-dock" aria-label="玩家資訊與設定">
+          <section class="panel stats-panel" aria-labelledby="statsTitle">
+            <div class="panel-heading">
+              <span class="eyebrow">BATTLE RECORD</span>
+              <h2 id="statsTitle">戰績</h2>
+            </div>
+            <div class="stat-grid">
+              <div class="stat-tile">
+                <span>總場次</span>
+                <strong id="totalCount">0</strong>
+              </div>
+              <div class="stat-tile">
+                <span>正面</span>
+                <strong id="headsCount">0</strong>
+              </div>
+              <div class="stat-tile">
+                <span>反面</span>
+                <strong id="tailsCount">0</strong>
+              </div>
+              <div class="stat-tile">
+                <span>正面率</span>
+                <strong id="winRate">0%</strong>
+              </div>
+            </div>
+          </section>
+
+          <section class="panel coin-panel" aria-labelledby="coinTitle">
+            <div class="panel-heading">
+              <span class="eyebrow">COIN KIT</span>
+              <h2 id="coinTitle">硬幣</h2>
+            </div>
+
+            <div class="preset-row" id="presetRow">
+              <button class="preset-button active" data-preset="pokemon" type="button">
+                <img src="assets/default-head.svg" alt="">Pokémon
+              </button>
+              <button class="preset-button" data-preset="chiikawa" type="button">
+                <img src="assets/chiikawa-head.png" alt="">吉伊卡哇
+              </button>
+            </div>
+
+            <div class="upload-grid">
+              <div class="upload-slot">
+                <img id="headsPreview" src="assets/default-head.svg" alt="正面預覽">
+                <div class="upload-copy">
+                  <strong>正面</strong>
+                  <label class="secondary-button" for="headsInput">上傳</label>
+                  <input id="headsInput" type="file" accept="image/png,image/jpeg,image/webp">
+                </div>
+                <div class="adjust-row" data-target="heads">
+                  <label>大小<input type="range" data-prop="scale" min="100" max="300" value="100"></label>
+                  <label>左右<input type="range" data-prop="x" min="-50" max="50" value="0"></label>
+                  <label>上下<input type="range" data-prop="y" min="-50" max="50" value="0"></label>
+                </div>
+              </div>
+
+              <div class="upload-slot">
+                <img id="tailsPreview" src="assets/default-tail.svg" alt="反面預覽">
+                <div class="upload-copy">
+                  <strong>反面</strong>
+                  <label class="secondary-button" for="tailsInput">上傳</label>
+                  <input id="tailsInput" type="file" accept="image/png,image/jpeg,image/webp">
+                </div>
+                <div class="adjust-row" data-target="tails">
+                  <label>大小<input type="range" data-prop="scale" min="100" max="300" value="100"></label>
+                  <label>左右<input type="range" data-prop="x" min="-50" max="50" value="0"></label>
+                  <label>上下<input type="range" data-prop="y" min="-50" max="50" value="0"></label>
+                </div>
+              </div>
+            </div>
+
+            <div class="upload-slot bg-upload-slot">
+              <img id="bgPreview" src="assets/card-back.jpg" alt="背景預覽">
+              <div class="upload-copy">
+                <strong>背景</strong>
+                <label class="secondary-button" for="bgInput">上傳</label>
+                <input id="bgInput" type="file" accept="image/png,image/jpeg,image/webp">
+              </div>
+              <div class="adjust-row" data-target="bg">
+                <label>大小<input type="range" data-prop="scale" min="100" max="300" value="100"></label>
+                <label>左右<input type="range" data-prop="x" min="-50" max="50" value="0"></label>
+                <label>上下<input type="range" data-prop="y" min="-50" max="50" value="0"></label>
+                <label>透明<input type="range" data-prop="opacity" min="10" max="100" value="72"></label>
+              </div>
+            </div>
+
+            <div class="utility-row">
+              <button class="secondary-button" id="resetStatsButton" type="button">清除戰績</button>
+              <button class="secondary-button" id="restoreAllButton" type="button">全部還原</button>
+            </div>
+
+            <p class="status-line" id="statusLine" aria-live="polite"></p>
+          </section>
+        </aside>
+      </main>
+    </div>
+
+    <script src="db.js"></script>
+    <script src="script.js"></script>
+  </body>
+</html>

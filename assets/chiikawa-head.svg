@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Chiikawa heads coin face">
+  <defs>
+    <radialGradient id="ckBg" cx="40%" cy="30%" r="72%">
+      <stop offset="0" stop-color="#fff9ef"/>
+      <stop offset="1" stop-color="#ffecd2"/>
+    </radialGradient>
+    <linearGradient id="ckShine" x1="100" x2="400" y1="80" y2="420" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#fff" stop-opacity=".5"/>
+      <stop offset=".3" stop-color="#fff" stop-opacity=".08"/>
+      <stop offset="1" stop-color="#000" stop-opacity=".06"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" fill="#ffecd2"/>
+  <circle cx="256" cy="256" r="232" fill="url(#ckBg)"/>
+  <circle cx="256" cy="256" r="232" fill="url(#ckShine)"/>
+  <!-- ears -->
+  <ellipse cx="168" cy="118" rx="42" ry="56" fill="#fff5e6" stroke="#7a6652" stroke-width="6" transform="rotate(-18 168 118)"/>
+  <ellipse cx="168" cy="118" rx="24" ry="36" fill="#ffcfcf" transform="rotate(-18 168 118)"/>
+  <ellipse cx="344" cy="118" rx="42" ry="56" fill="#fff5e6" stroke="#7a6652" stroke-width="6" transform="rotate(18 344 118)"/>
+  <ellipse cx="344" cy="118" rx="24" ry="36" fill="#ffcfcf" transform="rotate(18 344 118)"/>
+  <!-- face -->
+  <ellipse cx="256" cy="272" rx="148" ry="138" fill="#fff5e6" stroke="#7a6652" stroke-width="6"/>
+  <!-- eyes - small dots -->
+  <circle cx="214" cy="258" r="10" fill="#3a3025"/>
+  <circle cx="298" cy="258" r="10" fill="#3a3025"/>
+  <!-- eye shine -->
+  <circle cx="218" cy="254" r="3.5" fill="#fff"/>
+  <circle cx="302" cy="254" r="3.5" fill="#fff"/>
+  <!-- mouth - small open circle -->
+  <ellipse cx="256" cy="298" rx="14" ry="16" fill="#f28b82" stroke="#7a6652" stroke-width="3"/>
+  <!-- blush -->
+  <ellipse cx="186" cy="288" rx="22" ry="14" fill="#ffc0b0" opacity=".6"/>
+  <ellipse cx="326" cy="288" rx="22" ry="14" fill="#ffc0b0" opacity=".6"/>
+  <!-- coin rim -->
+  <circle cx="256" cy="256" r="232" fill="none" stroke="#c4a882" stroke-width="22"/>
+  <circle cx="256" cy="256" r="226" fill="none" stroke="#e8d5b8" stroke-width="5" opacity=".6"/>
+  <!-- text -->
+  <text x="256" y="410" text-anchor="middle" fill="#a08060" font-family="'Rounded Mplus 1c',Arial,sans-serif" font-size="36" font-weight="700" opacity=".7">HEADS</text>
+</svg>
