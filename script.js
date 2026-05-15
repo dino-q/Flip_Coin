@@ -664,13 +664,24 @@
     coinState.vx = Math.cos(direction) * moveSpeed;
     coinState.vy = Math.sin(direction) * moveSpeed;
     coinState.vz = randomBetween(440, 600) + spinForce * 0.32;
-    const spinBase = randomBetween(700, 1100) + spinForce * 2.0;
-    const absVx = Math.abs(vx);
-    const absVy = Math.abs(vy);
-    const lateralRatio = clamp(absVx / (absVx + absVy + 1), 0, 1);
-    coinState.vrx = randomSign() * spinBase * (1 - lateralRatio * 0.7);
-    coinState.vry = randomSign() * spinBase * lateralRatio * 0.85;
-    coinState.vrz = randomBetween(-90, 90) + vx * 0.03;
+    const spinBase = randomBetween(900, 1300) + spinForce * 2.3;
+
+    const speed = Math.hypot(vx, vy);
+    let baseVrx;
+    let baseVry;
+    if (speed > 1) {
+      baseVrx = -spinBase * vy / speed;
+      baseVry = spinBase * vx / speed;
+    } else {
+      baseVrx = spinBase * 0.7;
+      baseVry = 0;
+    }
+    const angleNoise = randomBetween(-Math.PI / 18, Math.PI / 18);
+    const noiseCos = Math.cos(angleNoise);
+    const noiseSin = Math.sin(angleNoise);
+    coinState.vrx = baseVrx * noiseCos - baseVry * noiseSin;
+    coinState.vry = baseVrx * noiseSin + baseVry * noiseCos;
+    coinState.vrz = randomBetween(-25, 25);
     coinState.startTime = performance.now();
     coinState.lastTime = coinState.startTime;
     coinState.minDuration = randomBetween(1400, 2000);
@@ -755,7 +766,7 @@
         const precession = edgeFactor * (1 - groundAge) * 160 * Math.sign(coinState.vrx || 1);
         coinState.vrz += precession * dt;
 
-        const rollScale = edgeFactor * (1 - groundAge * 0.7) * coinState.radius * 0.14 * (Math.PI / 180);
+        const rollScale = edgeFactor * (1 - groundAge * 0.7) * coinState.radius * 0.22 * (Math.PI / 180);
         const rollVx = -coinState.vry * rollScale;
         const rollVy = coinState.vrx * rollScale;
         const blend = 0.10;
@@ -799,25 +810,30 @@
 
   function resolveWallCollisions() {
     const bounce = 0.72;
+    const spinBounce = 0.85;
     let hit = false;
 
     if (coinState.x < state.bounds.minX) {
       coinState.x = state.bounds.minX;
       coinState.vx = Math.abs(coinState.vx) * bounce;
+      coinState.vry = -coinState.vry * spinBounce + randomBetween(-120, 120);
       hit = true;
     } else if (coinState.x > state.bounds.maxX) {
       coinState.x = state.bounds.maxX;
       coinState.vx = -Math.abs(coinState.vx) * bounce;
+      coinState.vry = -coinState.vry * spinBounce + randomBetween(-120, 120);
       hit = true;
     }
 
     if (coinState.y < state.bounds.minY) {
       coinState.y = state.bounds.minY;
       coinState.vy = Math.abs(coinState.vy) * bounce;
+      coinState.vrx = -coinState.vrx * spinBounce + randomBetween(-120, 120);
       hit = true;
     } else if (coinState.y > state.bounds.maxY) {
       coinState.y = state.bounds.maxY;
       coinState.vy = -Math.abs(coinState.vy) * bounce;
+      coinState.vrx = -coinState.vrx * spinBounce + randomBetween(-120, 120);
       hit = true;
     }
 
