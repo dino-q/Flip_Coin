@@ -38,25 +38,25 @@ storage, verify all of the following:
 - Confirm the coin side thickness is present for the whole flip, including
   face-on, angled, edge-on, and landing frames. It should read as a thin solid
   side wall, not a translucent glow/halo that appears and disappears.
-- Confirm the flip axis follows the release direction: the tumble axis is set
-  perpendicular to the throw and stays fixed for the whole flight (angular
-  momentum conservation). A hard/long swipe should produce noticeably faster
-  spin (more flips) without proportionally faster lateral movement — the coin
-  is flicked, not thrown.
-- Confirm the airborne coin only tumbles end-over-end around that single axis.
-  It must never drift into a vertical-rolling / spinning-top pose mid-air.
+- Confirm the coin's face genuinely sweeps toward and away from the camera as it
+  flips (heads → edge → tails → edge → heads), i.e. the face normal passes
+  through both +z and -z. It must NOT look like a flat card hinging about a fixed
+  pencil laid on the glass, nor drift into a vertical-rolling / spinning-top pose.
+- Confirm the flip has a natural wobble: at the face-on moments the coin is
+  tilted a few degrees (β is ~78°, not 90°), and the flip axis appears to wander,
+  rather than a perfectly regular planar flip.
+- Confirm a hard/long swipe produces noticeably more flips (higher `omega`)
+  without proportionally faster lateral movement — the coin is flicked, not thrown.
 - Confirm drag and release starts a flip and updates stats when the coin lands.
-- Confirm the landing result is derived from the current coin orientation, not
-  forced by a preselected result that causes a late artificial flip.
-- Confirm that when the coin lands on its edge (edgeAmount > 0.25), it briefly
-  rolls forward like a wheel (angular velocity drives linear movement via
-  v = ω × r) with z-axis precession, before gradually falling flat. The edge
-  rolling and precession effects decay over ~1 second via `groundAge`.
-- Confirm the coin does not get stuck on its edge — the edge snap ramps from
-  0.02 to 0.22 over 1 second, and `finishSettle` always snaps to the nearest
-  flat angle (±3-4° random offset for natural tilt).
-- Confirm the coin does not enter the final settle phase while it is still
-  visibly spinning fast; it should slow first, then roll/fall.
+- Confirm the landing result is derived from the current orientation
+  (`sign(coinState.nz)`), never from a preselected result — the reported face
+  must always equal the visibly-shown face (0 mismatches over many flips).
+- Confirm heads/tails is fair (~50/50) over a large batch, and that both the
+  heads (+z) and tails (rotateY(180)) faces render correctly.
+- Confirm the coin settles flat to whichever face was showing when it slowed
+  below `FLIP.flattenOmega`, collapsing the precession cone (β → ~2°, L → the
+  camera pole) rather than snapping a scripted angle; it should slow first, then
+  flatten, never enter settle while still spinning fast.
 - Confirm custom heads/tails uploads persist via IndexedDB.
 - Confirm reset stats and restore coin still work.
 
@@ -96,42 +96,51 @@ The coin should remain a single 3D object:
 ## Landing Behavior
 
 Do not preselect heads/tails and then rotate the coin to that target at the end.
-That reads as an artificial final flip. Let the simulated spin run down, derive
-the result from the current 3D orientation, then settle to the nearest equivalent
-heads/tails pose with the smallest angular correction.
+That reads as an artificial final flip. Let the spin run down; the result is read
+directly from the orientation (`sign(coinState.nz)` at the moment it slows below
+`FLIP.flattenOmega`), and the coin then flattens to that same face.
 
-## Physics Architecture
+## Physics Architecture — torque-free precession (rewritten 2026-07-04)
 
-The physics uses a single continuous `stepThrow` loop — there is no separate
-scripted settle animation phase. The coin goes through `idle → dragging →
-throwing → idle` with no `settling` phase. Settle conditions (flat enough, slow
-enough, on ground, past minDuration) trigger `finishSettle()` which snaps to the
-nearest natural angle and calls `finishThrow()`.
+The orientation model is the closed-form free precession of a symmetric disc, NOT
+Euler angles or an ODE integrator. It replaced the earlier `axisAngle`/`tumble`/
+`rz`/`vTumble`/`precessRate`/`wobbleAmp` scheme, which only ever rotated the coin
+about a screen-plane axis (`rotate3d(ax,ay,0,tumble)` — the Z axis component was
+hard-coded 0) plus ad-hoc sine wobbles, and so read as a flat card hinging about a
+pencil / a mechanically regular flip.
 
-Key design decisions:
-- **moveSpeed vs spinForce are decoupled**: `moveSpeed` caps at 650 (coin stays
-  on the table), `spinForce` caps at 1600 (hard swipe = many flips). This makes
-  the coin feel flicked, not thrown.
-- **Orientation is axis + angle, not Euler angles**: `axisAngle` (tumble axis
-  direction in the screen plane) + `tumble` (accumulated flip rotation) + `rz`
-  (in-plane spin), rendered as `rotate3d(ax, ay, 0, tumble) rotateZ(rz)`. The
-  old independent `rx`/`ry` Euler pair let the airborne coin drift into a fake
-  vertical-rolling pose; conserving the tumble axis keeps it end-over-end like
-  a real toss. To avoid looking mechanically regular, flight adds torque-free
-  precession (`precessRate`, slow steady axis drift) plus a periodic nutation
-  wobble and an in-plane face spin (`vrz`) — the flip plane slowly rotates but
-  can never become a spinning-top pose. The axis mirrors on wall bounces
-  (angular momentum is a pseudovector) and gets contact noise + edge precession
-  on the ground.
-- **Edge rolling is wheel-physics**: roll velocity is perpendicular to the
-  tumble axis with magnitude `vTumble × radius × scale`. The coin rolls in the
-  direction its spin axis dictates, like a real coin on a table.
-- **No scripted animations for settle**: previous attempts with spiral paths,
-  eased interpolation, and two-phase settle all looked robotic. Pure physics
-  with aggressive damping looks most natural.
-- **groundAge decay**: edge rolling effects (precession, roll force) decay over
-  1 second so the coin always falls flat. Without this, the coin can get stuck
-  in a stable vertical equilibrium.
+The model (all in `startThrow`, `stepThrow`, `updateOrientation`, `renderCoin`):
+- **One fixed world axis `L`** (`Lx,Ly,Lz`) is chosen once at release and held
+  constant for the whole flight = angular-momentum conservation. `L` is biased
+  roughly horizontal in the screen plane (`FLIP.inPlaneSpread`) with a small lean
+  toward the camera (`FLIP.leanMax`). **`L` must be roughly in the screen plane,
+  NOT pointing at the camera** — that is what makes the face sweep through ±z and
+  actually flip. (The design-workflow draft suggested "L toward camera, β 20–40°";
+  that geometry does not flip and was corrected here.)
+- **The face normal `n` cones around `L`** at fixed half-angle `beta` as the
+  precession azimuth `psi` accumulates: `n = cos β·L + sin β·(cos ψ·e1 + sin ψ·e2)`
+  where `{e1,e2}` span the plane ⟂ `L`. `beta ≈ 78°` gives a clear flip with a
+  natural ~12° wobble; `β = 90°` is a clean textbook flip; small β is a frisbee
+  spin. This is the single "wobble" knob.
+- **One master angular speed `omega`** (deg/s) drives both `psi` (flip) and `phi`
+  (in-plane face spin, scaled by `FLIP.phiRate`). No sines. `omega` is capped at
+  `FLIP.speedMax` so per-frame rotation stays < ~25° (no stroboscopic aliasing —
+  this replaced the rejected tanh-cap + motion-blur attempt).
+- **Render**: `updateOrientation()` computes `n`; `renderCoin` turns it into the
+  axis-angle that rotates +z onto `n` (`axis = cross(+z,n) = (-ny,nx,0)`, angle =
+  `acos(nz)`) plus `rotateZ(phi)`. CSS: `rotate3d(--ax,--ay,--az,--tilt) rotateZ(--phi)`.
+  `getVisibleSide` / `getEdgeAmount` read the SAME `n`, so shown face and recorded
+  result can never diverge.
+- **Ground settle**: once `|omega| < FLIP.flattenOmega`, latch the currently-up
+  pole, lerp `L` → that camera pole and `beta` → ~2°, so the cone collapses and the
+  coin lies flat on the face it was showing. `finishSettle` reads the latched pole.
+- **Bounce / walls**: a floor bounce bleeds `omega` (`FLIP.bounceSpinKeep`) but
+  never touches `L` (momentum direction conserved); wall hits mirror the relevant
+  `L` component (`L` is a pseudovector) and damp `omega`.
+
+Tunable knobs live in the `FLIP` config object at the top of `script.js`
+(`betaDeg` = wobble, `speedBase`/`speedCoupling`/`speedMax` = flip speed,
+`phiRate`, `inPlaneSpread`, `leanMax`, `groundSpinDamp`, `restitution`).
 
 ## Audio
 

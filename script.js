@@ -30,6 +30,22 @@
   const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
   const VALID_TYPES = new Set(["image/png", "image/jpeg", "image/webp"]);
 
+  // 擲硬幣物理旋鈕(「自然帶晃」預設)
+  const FLIP = {
+    speedBase: 360,       // 基礎角速 deg/s
+    speedCoupling: 0.6,   // 力道 → 角速耦合(deg/s per unit force)
+    speedMax: 1450,       // 角速上限(每幀轉角過大會頻閃,壓在 ~24°/frame 內)
+    betaDeg: 78,          // 錐半角:90=乾淨端對端翻;越小越搖;~78=自然帶晃
+    betaJitter: 6,        // 每擲 beta 抖動範圍
+    inPlaneSpread: 32,    // 翻轉軸 L 在螢幕平面內偏離水平的範圍(deg)
+    leanMax: 12,          // L 偏離螢幕平面(朝鏡頭)的小傾角(deg),增加每擲差異
+    phiRate: 0.35,        // 面內自旋相對主角速的比例
+    groundSpinDamp: 0.7,  // 落地後角速每幀衰減
+    restitution: 0.3,     // 垂直回彈係數(硬幣幾乎不彈)
+    bounceSpinKeep: 0.6,  // 每次彈跳保留的角速比例
+    flattenOmega: 260,    // 角速降到此值以下開始朝當前面攤平
+  };
+
   const elements = {};
   const coinState = {
     x: 0,
@@ -38,14 +54,19 @@
     vx: 0,
     vy: 0,
     vz: 0,
-    axisAngle: 0,
-    tumble: 0,
-    rz: 0,
-    vTumble: 0,
-    vrz: 0,
+    // 朝向:面法線 n(nx,ny,nz)決定看到哪一面;phi 為面內自旋(deg)。渲染只讀這幾個
+    nx: 0,
+    ny: 0,
+    nz: 1,
+    phi: 0,
+    // 飛行:固定世界翻轉軸 L(單位向量)+ 錐半角 beta(rad)+ 主角速 omega(deg/s)+ 進動角 psi(deg)
+    Lx: 1,
+    Ly: 0,
+    Lz: 0,
+    beta: 0,
+    omega: 0,
+    psi: 0,
     spinDir: 1,
-    precessRate: 0,
-    wobbleAmp: 0,
     radius: 56,
     visualRadius: 56,
     phase: "idle",
@@ -486,12 +507,10 @@
     coinState.vx = 0;
     coinState.vy = 0;
     coinState.vz = 0;
-    coinState.axisAngle = 0;
-    coinState.tumble = 0;
-    coinState.rz = 0;
-    coinState.vTumble = 0;
-    coinState.vrz = 0;
+    coinState.omega = 0;
+    coinState.psi = 0;
     coinState.phase = "idle";
+    setRestOrientation(coinState.result || "heads");
     renderCoin();
   }
 
@@ -540,8 +559,7 @@
       offsetY: point.y - coinState.y,
       startX: coinState.x,
       startY: coinState.y,
-      baseTumble: Math.round(coinState.tumble / 180) * 180,
-      baseRz: coinState.rz,
+      restFace: coinState.result || "heads",
       history: [{ x: point.x, y: point.y, t: performance.now() }],
     };
 
@@ -570,14 +588,16 @@
     const previousY = coinState.y;
     coinState.x = clamp(point.x - state.drag.offsetX, state.bounds.minX, state.bounds.maxX);
     coinState.y = clamp(point.y - state.drag.offsetY, state.bounds.minY, state.bounds.maxY);
-    const tiltX = clamp((previousY - coinState.y) * 0.42, -24, 24);
-    const tiltY = clamp((coinState.x - previousX) * 0.42, -24, 24);
-    const tiltMag = Math.hypot(tiltX, tiltY);
-    if (tiltMag > 0.5) {
-      coinState.axisAngle = Math.atan2(tiltY, tiltX);
-    }
-    coinState.tumble = state.drag.baseTumble + tiltMag;
-    coinState.rz = state.drag.baseRz + clamp((coinState.x - state.drag.startX) * 0.08, -18, 18);
+    // 拖曳回饋:讓硬幣往拖曳方向傾一點(不翻面,只把 rest 面法線偏一點)
+    const dragX = clamp((coinState.x - state.drag.startX) * 0.006, -0.5, 0.5);
+    const dragY = clamp((coinState.y - state.drag.startY) * 0.006, -0.5, 0.5);
+    const restSign = state.drag.restFace === "tails" ? -1 : 1;
+    const tnx = Math.sin(dragX);
+    const tny = -Math.sin(dragY);
+    coinState.nx = tnx;
+    coinState.ny = tny;
+    coinState.nz = restSign * Math.sqrt(Math.max(0.0001, 1 - tnx * tnx - tny * tny));
+    coinState.phi += (coinState.x - previousX) * 0.15;
 
     const now = performance.now();
     state.drag.history.push({ x: point.x, y: point.y, t: now });
@@ -619,7 +639,7 @@
     state.drag = null;
     elements.coinScene.classList.remove("is-dragging");
     coinState.phase = "idle";
-    coinState.tumble = Math.round(coinState.tumble / 180) * 180;
+    setRestOrientation(coinState.result || "heads");
     renderCoin();
   }
 
@@ -675,15 +695,25 @@
     coinState.vy = Math.sin(direction) * moveSpeed;
     coinState.vz = randomBetween(440, 600) + spinForce * 0.32;
 
-    // 真實拋硬幣角動量近乎守恆:繞一條大致垂直於拋出方向的水平軸端對端翻轉。
-    // 手感不完美 → 軸向帶大範圍隨機偏角,再疊加面內自旋與轉軸進動(費曼盤搖擺),
-    // 讓每一擲的翻轉軸、轉速、搖擺感都不同
-    coinState.axisAngle = direction + Math.PI / 2 + randomBetween(-Math.PI / 4, Math.PI / 4);
-    coinState.vTumble = randomBetween(600, 950) + spinForce * 1.15;
+    // 無力矩進動模型:出手選定一條「固定在世界空間」的翻轉軸 L(整段飛行不變 → 角動量守恆),
+    // 面法線繞 L 以固定錐半角 beta 打錐形 → 天然邊翻邊晃(Diaconis/費曼盤)。
+    // L 需大致水平(在螢幕平面內)硬幣才會真的翻正反面;beta≈78° 產生自然搖擺。
     coinState.spinDir = randomSign();
-    coinState.vrz = coinState.spinDir * randomBetween(80, 220);
-    coinState.precessRate = randomSign() * randomBetween(0.4, 2.2);
-    coinState.wobbleAmp = randomBetween(0.05, 0.18);
+    coinState.omega = coinState.spinDir *
+      clamp(FLIP.speedBase + spinForce * FLIP.speedCoupling, 0, FLIP.speedMax);
+    coinState.beta = degToRad(clamp(FLIP.betaDeg + randomBetween(-FLIP.betaJitter, FLIP.betaJitter), 55, 90));
+
+    // L 以水平軸為底,在螢幕平面內偏一點、再朝鏡頭小幅傾斜 → 每擲的翻轉軸都不同
+    const inPlane = degToRad(randomBetween(-FLIP.inPlaneSpread, FLIP.inPlaneSpread));
+    const lean = degToRad(randomBetween(-FLIP.leanMax, FLIP.leanMax));
+    const cl = Math.cos(lean);
+    coinState.Lx = cl * Math.cos(inPlane);
+    coinState.Ly = cl * Math.sin(inPlane);
+    coinState.Lz = Math.sin(lean);
+    normalizeL();
+
+    coinState.psi = randomBetween(0, 360);   // 隨機初始相位 → 公平 50/50
+    coinState.phi = randomBetween(0, 360);
     coinState.startTime = performance.now();
     coinState.lastTime = coinState.startTime;
     coinState.minDuration = randomBetween(1400, 2000);
@@ -732,11 +762,8 @@
     if (coinState.z < 0) {
       coinState.z = 0;
       if (Math.abs(coinState.vz) > 115) {
-        coinState.vz = -coinState.vz * 0.3;
-        // 撞桌面是旋轉能量的主要消耗:每次彈跳大幅扣轉速,硬幣才停得下來
-        coinState.vTumble *= 0.55;
-        coinState.vrz = coinState.vrz * 0.8 + randomBetween(-60, 60);
-        coinState.axisAngle += randomBetween(-0.3, 0.3);
+        coinState.vz = -coinState.vz * FLIP.restitution;
+        coinState.omega *= FLIP.bounceSpinKeep;   // 彈跳耗旋轉能量(不動 L,角動量方向守恆)
         playBounceSound();
       } else {
         coinState.vz = 0;
@@ -747,63 +774,38 @@
 
     const airborne = coinState.z > 2;
     if (airborne) {
-      // 空中角動量近乎守恆:轉速幾乎不衰減。轉軸帶穩定進動 + 雙頻章動
-      // (兩個不可通約的頻率疊加,避免看起來像等速繞圈),但不會變成垂直滾動
-      coinState.vTumble *= Math.pow(0.997, dt * 60);
-      coinState.vrz *= Math.pow(0.995, dt * 60);
-      coinState.axisAngle += (coinState.precessRate
-        + Math.sin(wobble * 2.6 + coinState.seed) * 0.5
-        + Math.sin(wobble * 1.3 + coinState.seed * 1.7) * 0.4) * dt;
+      // 空中:L 不變、角速幾乎不衰減,psi(翻轉)/phi(面內自旋)穩定累加 — 無任何假 sine
+      coinState.psi += coinState.omega * dt;
+      coinState.phi += coinState.omega * FLIP.phiRate * dt;
     } else {
-      const edgeAmount = getEdgeAmount(coinState.tumble);
-      const onEdge = edgeAmount > 0.25;
-      const edgeFactor = clamp((edgeAmount - 0.25) / 0.55, 0, 1);
+      // 落地:耗旋轉能量;夠慢時朝「當前朝上那一面」攤平(把 L 轉向鏡頭、beta 收小)
+      coinState.omega *= Math.pow(FLIP.groundSpinDamp, dt * 60);
+      coinState.psi += coinState.omega * dt;
+      coinState.phi += coinState.omega * FLIP.phiRate * dt;
 
-      if (onEdge) {
-        const groundAge = clamp((elapsed - coinState.minDuration * 0.4) / 1000, 0, 1);
-        const nearestFlat = Math.round(coinState.tumble / 180) * 180;
-        const edgeSnap = 0.02 + groundAge * 0.20;
-        coinState.tumble = lerp(coinState.tumble, nearestFlat, edgeSnap);
+      const groundFriction = 0.86 - lateBrake * 0.14;
+      coinState.vx *= Math.pow(groundFriction, dt * 60);
+      coinState.vy *= Math.pow(groundFriction, dt * 60);
 
-        coinState.vTumble *= Math.pow(0.85 - groundAge * 0.10, dt * 60);
-        coinState.vrz *= Math.pow(0.92 - groundAge * 0.04, dt * 60);
-
-        // 立緣搖擺:接觸點繞圈進動、越攤平晃得越急(歐拉盤效應)
-        coinState.axisAngle += coinState.spinDir * edgeFactor * (2.4 + groundAge * 3.2) * dt;
-        coinState.vrz += coinState.spinDir * edgeFactor * (1 - groundAge) * 40 * dt;
-
-        // 立緣滾動:沿垂直於轉軸的方向帶動位移
-        const rollSpeed = coinState.vTumble * (Math.PI / 180) * coinState.radius * edgeFactor * 0.22;
-        const rollVx = -Math.sin(coinState.axisAngle) * rollSpeed;
-        const rollVy = Math.cos(coinState.axisAngle) * rollSpeed;
-        const blend = 0.10;
-        coinState.vx = lerp(coinState.vx, rollVx, blend);
-        coinState.vy = lerp(coinState.vy, rollVy, blend);
-      } else {
-        const groundFriction = 0.88 - lateBrake * 0.12;
-        coinState.vx *= Math.pow(groundFriction, dt * 60);
-        coinState.vy *= Math.pow(groundFriction, dt * 60);
-
-        const flatSnap = 0.03 + lateBrake * 0.08;
-        const nearestFlat = Math.round(coinState.tumble / 180) * 180;
-        coinState.tumble = lerp(coinState.tumble, nearestFlat, flatSnap);
-
-        coinState.vTumble *= Math.pow(0.72 - lateBrake * 0.12, dt * 60);
-        coinState.vrz *= Math.pow(0.90 - lateBrake * 0.06, dt * 60);
+      if (Math.abs(coinState.omega) < FLIP.flattenOmega) {
+        if (!coinState.settle) {
+          updateOrientation();
+          coinState.settle = { pole: coinState.nz >= 0 ? 1 : -1 };  // 鎖定要攤平到哪一面
+        }
+        const k = clamp(0.06 + (FLIP.flattenOmega - Math.abs(coinState.omega)) / FLIP.flattenOmega * 0.14, 0.06, 0.2);
+        coinState.Lx = lerp(coinState.Lx, 0, k);
+        coinState.Ly = lerp(coinState.Ly, 0, k);
+        coinState.Lz = lerp(coinState.Lz, coinState.settle.pole, k);
+        normalizeL();
+        coinState.beta = lerp(coinState.beta, degToRad(2), k);
       }
     }
 
-    // 空中翻轉節奏帶微調變:轉軸偏離主軸時,視覺上的翻面速率本來就不均勻
-    const tumbleRate = airborne
-      ? coinState.vTumble * (1 + coinState.wobbleAmp * Math.sin(wobble * 4.1 + coinState.seed))
-      : coinState.vTumble;
-    coinState.tumble += tumbleRate * dt;
-    coinState.rz += coinState.vrz * dt;
+    updateOrientation();   // 由 (L, beta, psi) 算出面法線 n 存入 coinState;渲染與落定都讀它
 
     if (elapsed > coinState.minDuration && !airborne) {
-      const edgeAmount = getEdgeAmount(coinState.tumble);
       const moveSpeed = Math.hypot(coinState.vx, coinState.vy);
-      if (edgeAmount < 0.12 && Math.abs(coinState.vTumble) < 90 && moveSpeed < 15) {
+      if (getEdgeAmount() < 0.12 && Math.abs(coinState.omega) < 80 && moveSpeed < 15) {
         finishSettle();
         return;
       }
@@ -847,19 +849,19 @@
     }
   }
 
-  // 撞牆時鏡射轉軸(角動量是贗向量),扣一點轉速並加少許接觸雜訊
+  // 撞牆時鏡射翻轉軸 L(角動量是贗向量),扣一點轉速
   function reflectSpin(wall) {
-    coinState.axisAngle =
-      (wall === "x" ? -coinState.axisAngle : Math.PI - coinState.axisAngle) + randomBetween(-0.15, 0.15);
-    coinState.vTumble *= 0.85;
-    coinState.vrz = -coinState.vrz * 0.85;
+    if (wall === "x") coinState.Lx = -coinState.Lx;
+    else coinState.Ly = -coinState.Ly;
+    normalizeL();
+    coinState.omega *= 0.85;
   }
 
   function finishSettle() {
-    const result = getVisibleSide(coinState.tumble);
-    coinState.tumble = nearestAngle(coinState.tumble, result === "heads" ? 0 : 180) + randomBetween(-4, 4);
-    coinState.result = result;
+    const pole = coinState.settle ? coinState.settle.pole : (coinState.nz >= 0 ? 1 : -1);
+    coinState.result = pole >= 0 ? "heads" : "tails";
     coinState.z = 0;
+    setRestOrientation(coinState.result);   // 攤平到該面 + 微小裝飾傾斜
     finishThrow();
   }
 
@@ -869,10 +871,9 @@
     coinState.vx = 0;
     coinState.vy = 0;
     coinState.vz = 0;
-    coinState.vTumble = 0;
-    coinState.vrz = 0;
-    coinState.tumble = ((coinState.tumble % 360) + 360) % 360;
-    coinState.rz = ((coinState.rz % 360) + 360) % 360;
+    coinState.omega = 0;
+    coinState.settle = null;
+    coinState.phi = ((coinState.phi % 360) + 360) % 360;
     elements.quickFlipButton.disabled = false;
     elements.coinScene.classList.remove("is-flying");
 
@@ -905,10 +906,23 @@
     elements.coinScene.style.setProperty("--rim-offset", `${-rimRadius}px`);
     elements.coinScene.style.setProperty("--rim-width", `${rimWidth}px`);
     elements.coinScene.style.setProperty("--rim-opacity", String(rimOpacity));
-    elements.coin.style.setProperty("--ax", Math.cos(coinState.axisAngle).toFixed(4));
-    elements.coin.style.setProperty("--ay", Math.sin(coinState.axisAngle).toFixed(4));
-    elements.coin.style.setProperty("--tumble", `${coinState.tumble}deg`);
-    elements.coin.style.setProperty("--rz", `${coinState.rz}deg`);
+    // 由面法線 n 算「把 +z 轉到 n」的軸(= cross(+z,n) = (-ny, nx, 0),落在螢幕平面)與角,
+    // 再疊面內自旋 phi。CSS rotate3d 會自行正規化軸向,故無須手動 normalize。
+    const nz = clamp(coinState.nz, -1, 1);
+    const tiltDeg = (Math.acos(nz) * 180) / Math.PI;
+    let ax = -coinState.ny;
+    let ay = coinState.nx;
+    let az = 0;
+    if (Math.hypot(ax, ay) < 1e-4) {   // n≈±z 退化:軸不定,給安全值
+      ax = nz >= 0 ? 0 : 1;
+      ay = 0;
+      az = nz >= 0 ? 1 : 0;
+    }
+    elements.coin.style.setProperty("--ax", ax.toFixed(4));
+    elements.coin.style.setProperty("--ay", ay.toFixed(4));
+    elements.coin.style.setProperty("--az", az.toFixed(4));
+    elements.coin.style.setProperty("--tilt", `${tiltDeg.toFixed(3)}deg`);
+    elements.coin.style.setProperty("--phi", `${coinState.phi.toFixed(3)}deg`);
 
     const shadowScale = clamp(1.1 - coinState.z / 780, 0.56, 1.12);
     const shadowOpacity = clamp(0.48 - coinState.z / 900, 0.16, 0.52);
@@ -1128,12 +1142,54 @@
     return Math.round((current - targetModulo) / 360) * 360 + targetModulo;
   }
 
-  function getVisibleSide(tumble) {
-    return Math.cos(degToRad(tumble)) >= 0 ? "heads" : "tails";
+  // 面法線 n = cos(beta)·L + sin(beta)·(cos(psi)·e1 + sin(psi)·e2),{e1,e2} 為垂直 L 的正交基。
+  // 隨 psi 累加,n 繞 L 打錐形 → 掃過鏡頭正對/背對 = 翻正反面,帶固定 beta 傾角 = 自然搖擺。
+  function updateOrientation() {
+    const Lx = coinState.Lx, Ly = coinState.Ly, Lz = coinState.Lz;
+    const ax = Math.abs(Lz) < 0.9 ? 0 : 1;
+    const az = Math.abs(Lz) < 0.9 ? 1 : 0;
+    // e1 = normalize(cross(a, L)),a = (ax,0,az)
+    let e1x = 0 * Lz - az * Ly;
+    let e1y = az * Lx - ax * Lz;
+    let e1z = ax * Ly - 0 * Lx;
+    const e1len = Math.hypot(e1x, e1y, e1z) || 1;
+    e1x /= e1len; e1y /= e1len; e1z /= e1len;
+    // e2 = cross(L, e1)
+    const e2x = Ly * e1z - Lz * e1y;
+    const e2y = Lz * e1x - Lx * e1z;
+    const e2z = Lx * e1y - Ly * e1x;
+    const cb = Math.cos(coinState.beta), sb = Math.sin(coinState.beta);
+    const cp = Math.cos(degToRad(coinState.psi)), sp = Math.sin(degToRad(coinState.psi));
+    coinState.nx = cb * Lx + sb * (cp * e1x + sp * e2x);
+    coinState.ny = cb * Ly + sb * (cp * e1y + sp * e2y);
+    coinState.nz = cb * Lz + sb * (cp * e1z + sp * e2z);
   }
 
-  function getEdgeAmount(tumble) {
-    return Math.abs(Math.sin(degToRad(tumble)));
+  // 靜置:硬幣平躺、指定面朝鏡頭,帶一點裝飾性微傾不死板
+  function setRestOrientation(face) {
+    coinState.result = face;
+    coinState.Lx = 0;
+    coinState.Ly = 0;
+    coinState.Lz = face === "tails" ? -1 : 1;
+    coinState.beta = degToRad(randomBetween(1.5, 3.5));
+    coinState.psi = randomBetween(0, 360);
+    coinState.settle = null;
+    updateOrientation();
+  }
+
+  function normalizeL() {
+    const len = Math.hypot(coinState.Lx, coinState.Ly, coinState.Lz) || 1;
+    coinState.Lx /= len;
+    coinState.Ly /= len;
+    coinState.Lz /= len;
+  }
+
+  function getVisibleSide() {
+    return coinState.nz >= 0 ? "heads" : "tails";
+  }
+
+  function getEdgeAmount() {
+    return Math.hypot(coinState.nx, coinState.ny);
   }
 
   function degToRad(degrees) {
