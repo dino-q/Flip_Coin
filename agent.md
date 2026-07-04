@@ -38,10 +38,13 @@ storage, verify all of the following:
 - Confirm the coin side thickness is present for the whole flip, including
   face-on, angled, edge-on, and landing frames. It should read as a thin solid
   side wall, not a translucent glow/halo that appears and disappears.
-- Confirm flip axis follows drag direction: horizontal drag = sideways tumble
-  (vry dominant), vertical drag = forward tumble (vrx dominant), diagonal = mixed.
-  A hard/long swipe should produce noticeably faster spin (more flips) without
-  proportionally faster lateral movement — the coin is flicked, not thrown.
+- Confirm the flip axis follows the release direction: the tumble axis is set
+  perpendicular to the throw and stays fixed for the whole flight (angular
+  momentum conservation). A hard/long swipe should produce noticeably faster
+  spin (more flips) without proportionally faster lateral movement — the coin
+  is flicked, not thrown.
+- Confirm the airborne coin only tumbles end-over-end around that single axis.
+  It must never drift into a vertical-rolling / spinning-top pose mid-air.
 - Confirm drag and release starts a flip and updates stats when the coin lands.
 - Confirm the landing result is derived from the current coin orientation, not
   forced by a preselected result that causes a late artificial flip.
@@ -109,9 +112,20 @@ Key design decisions:
 - **moveSpeed vs spinForce are decoupled**: `moveSpeed` caps at 650 (coin stays
   on the table), `spinForce` caps at 1600 (hard swipe = many flips). This makes
   the coin feel flicked, not thrown.
-- **Edge rolling is wheel-physics**: `rollVx = -vry × radius × scale`,
-  `rollVy = vrx × radius × scale`. The coin rolls in the direction its spin
-  axis dictates, like a real coin on a table.
+- **Orientation is axis + angle, not Euler angles**: `axisAngle` (tumble axis
+  direction in the screen plane) + `tumble` (accumulated flip rotation) + `rz`
+  (in-plane spin), rendered as `rotate3d(ax, ay, 0, tumble) rotateZ(rz)`. The
+  old independent `rx`/`ry` Euler pair let the airborne coin drift into a fake
+  vertical-rolling pose; conserving the tumble axis keeps it end-over-end like
+  a real toss. To avoid looking mechanically regular, flight adds torque-free
+  precession (`precessRate`, slow steady axis drift) plus a periodic nutation
+  wobble and an in-plane face spin (`vrz`) — the flip plane slowly rotates but
+  can never become a spinning-top pose. The axis mirrors on wall bounces
+  (angular momentum is a pseudovector) and gets contact noise + edge precession
+  on the ground.
+- **Edge rolling is wheel-physics**: roll velocity is perpendicular to the
+  tumble axis with magnitude `vTumble × radius × scale`. The coin rolls in the
+  direction its spin axis dictates, like a real coin on a table.
 - **No scripted animations for settle**: previous attempts with spiral paths,
   eased interpolation, and two-phase settle all looked robotic. Pure physics
   with aggressive damping looks most natural.

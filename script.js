@@ -38,13 +38,16 @@
     vx: 0,
     vy: 0,
     vz: 0,
-    rx: 0,
-    ry: 0,
+    axisAngle: 0,
+    tumble: 0,
     rz: 0,
-    vrx: 0,
-    vry: 0,
+    vTumble: 0,
     vrz: 0,
+    spinDir: 1,
+    precessRate: 0,
+    wobbleAmp: 0,
     radius: 56,
+    visualRadius: 56,
     phase: "idle",
     result: "heads",
     startTime: 0,
@@ -483,11 +486,10 @@
     coinState.vx = 0;
     coinState.vy = 0;
     coinState.vz = 0;
-    coinState.rx = 0;
-    coinState.ry = 0;
+    coinState.axisAngle = 0;
+    coinState.tumble = 0;
     coinState.rz = 0;
-    coinState.vrx = 0;
-    coinState.vry = 0;
+    coinState.vTumble = 0;
     coinState.vrz = 0;
     coinState.phase = "idle";
     renderCoin();
@@ -509,7 +511,9 @@
   function measureBounds() {
     const rect = elements.playfield.getBoundingClientRect();
     const coinRect = elements.coinScene.getBoundingClientRect();
-    coinState.radius = Math.max(44, coinRect.width / 2);
+    // visualRadius 給渲染(rim/陰影/置中要貼合實際大小);radius 留 44px 下限只給物理邊界
+    coinState.visualRadius = coinRect.width / 2 || coinState.visualRadius;
+    coinState.radius = Math.max(44, coinState.visualRadius);
     state.bounds = {
       width: rect.width,
       height: rect.height,
@@ -536,6 +540,8 @@
       offsetY: point.y - coinState.y,
       startX: coinState.x,
       startY: coinState.y,
+      baseTumble: Math.round(coinState.tumble / 180) * 180,
+      baseRz: coinState.rz,
       history: [{ x: point.x, y: point.y, t: performance.now() }],
     };
 
@@ -564,9 +570,14 @@
     const previousY = coinState.y;
     coinState.x = clamp(point.x - state.drag.offsetX, state.bounds.minX, state.bounds.maxX);
     coinState.y = clamp(point.y - state.drag.offsetY, state.bounds.minY, state.bounds.maxY);
-    coinState.rx = clamp((previousY - coinState.y) * 0.42, -24, 24);
-    coinState.ry = clamp((coinState.x - previousX) * 0.42, -24, 24);
-    coinState.rz = clamp((coinState.x - state.drag.startX) * 0.08, -18, 18);
+    const tiltX = clamp((previousY - coinState.y) * 0.42, -24, 24);
+    const tiltY = clamp((coinState.x - previousX) * 0.42, -24, 24);
+    const tiltMag = Math.hypot(tiltX, tiltY);
+    if (tiltMag > 0.5) {
+      coinState.axisAngle = Math.atan2(tiltY, tiltX);
+    }
+    coinState.tumble = state.drag.baseTumble + tiltMag;
+    coinState.rz = state.drag.baseRz + clamp((coinState.x - state.drag.startX) * 0.08, -18, 18);
 
     const now = performance.now();
     state.drag.history.push({ x: point.x, y: point.y, t: now });
@@ -608,8 +619,7 @@
     state.drag = null;
     elements.coinScene.classList.remove("is-dragging");
     coinState.phase = "idle";
-    coinState.rx = 0;
-    coinState.ry = nearestAngle(coinState.ry, 0);
+    coinState.tumble = Math.round(coinState.tumble / 180) * 180;
     renderCoin();
   }
 
@@ -664,24 +674,16 @@
     coinState.vx = Math.cos(direction) * moveSpeed;
     coinState.vy = Math.sin(direction) * moveSpeed;
     coinState.vz = randomBetween(440, 600) + spinForce * 0.32;
-    const spinBase = randomBetween(900, 1300) + spinForce * 2.3;
 
-    const speed = Math.hypot(vx, vy);
-    let baseVrx;
-    let baseVry;
-    if (speed > 1) {
-      baseVrx = -spinBase * vy / speed;
-      baseVry = spinBase * vx / speed;
-    } else {
-      baseVrx = spinBase * 0.7;
-      baseVry = 0;
-    }
-    const angleNoise = randomBetween(-Math.PI / 18, Math.PI / 18);
-    const noiseCos = Math.cos(angleNoise);
-    const noiseSin = Math.sin(angleNoise);
-    coinState.vrx = baseVrx * noiseCos - baseVry * noiseSin;
-    coinState.vry = baseVrx * noiseSin + baseVry * noiseCos;
-    coinState.vrz = randomBetween(-25, 25);
+    // 真實拋硬幣角動量近乎守恆:繞一條大致垂直於拋出方向的水平軸端對端翻轉。
+    // 手感不完美 → 軸向帶大範圍隨機偏角,再疊加面內自旋與轉軸進動(費曼盤搖擺),
+    // 讓每一擲的翻轉軸、轉速、搖擺感都不同
+    coinState.axisAngle = direction + Math.PI / 2 + randomBetween(-Math.PI / 4, Math.PI / 4);
+    coinState.vTumble = randomBetween(600, 950) + spinForce * 1.15;
+    coinState.spinDir = randomSign();
+    coinState.vrz = coinState.spinDir * randomBetween(80, 220);
+    coinState.precessRate = randomSign() * randomBetween(0.4, 2.2);
+    coinState.wobbleAmp = randomBetween(0.05, 0.18);
     coinState.startTime = performance.now();
     coinState.lastTime = coinState.startTime;
     coinState.minDuration = randomBetween(1400, 2000);
@@ -715,12 +717,10 @@
 
   function stepThrow(now, dt) {
     const elapsed = now - coinState.startTime;
-    const progress = clamp(elapsed / coinState.minDuration, 0, 1);
     const lateBrake = clamp((elapsed - coinState.minDuration) / 2000, 0, 1);
     const wobble = elapsed / 1000;
 
     const airDamp = Math.pow(0.982, dt * 60);
-    const spinDamp = Math.pow(0.974, dt * 60);
 
     coinState.vx = coinState.vx * airDamp + Math.sin(wobble * 6.7 + coinState.seed) * 26 * dt;
     coinState.vy = coinState.vy * airDamp + Math.cos(wobble * 5.4 + coinState.seed) * 24 * dt;
@@ -732,7 +732,11 @@
     if (coinState.z < 0) {
       coinState.z = 0;
       if (Math.abs(coinState.vz) > 115) {
-        coinState.vz = -coinState.vz * 0.34;
+        coinState.vz = -coinState.vz * 0.3;
+        // 撞桌面是旋轉能量的主要消耗:每次彈跳大幅扣轉速,硬幣才停得下來
+        coinState.vTumble *= 0.55;
+        coinState.vrz = coinState.vrz * 0.8 + randomBetween(-60, 60);
+        coinState.axisAngle += randomBetween(-0.3, 0.3);
         playBounceSound();
       } else {
         coinState.vz = 0;
@@ -743,32 +747,35 @@
 
     const airborne = coinState.z > 2;
     if (airborne) {
-      coinState.vrx *= spinDamp;
-      coinState.vry *= Math.pow(0.96, dt * 60);
-      coinState.vrz *= Math.pow(0.978, dt * 60);
+      // 空中角動量近乎守恆:轉速幾乎不衰減。轉軸帶穩定進動 + 雙頻章動
+      // (兩個不可通約的頻率疊加,避免看起來像等速繞圈),但不會變成垂直滾動
+      coinState.vTumble *= Math.pow(0.997, dt * 60);
+      coinState.vrz *= Math.pow(0.995, dt * 60);
+      coinState.axisAngle += (coinState.precessRate
+        + Math.sin(wobble * 2.6 + coinState.seed) * 0.5
+        + Math.sin(wobble * 1.3 + coinState.seed * 1.7) * 0.4) * dt;
     } else {
-      const edgeAmount = getEdgeAmount(coinState.rx, coinState.ry);
+      const edgeAmount = getEdgeAmount(coinState.tumble);
       const onEdge = edgeAmount > 0.25;
       const edgeFactor = clamp((edgeAmount - 0.25) / 0.55, 0, 1);
 
       if (onEdge) {
         const groundAge = clamp((elapsed - coinState.minDuration * 0.4) / 1000, 0, 1);
-        const nearestFlatRx = Math.round(coinState.rx / 180) * 180;
-        const nearestFlatRy = Math.round(coinState.ry / 180) * 180;
+        const nearestFlat = Math.round(coinState.tumble / 180) * 180;
         const edgeSnap = 0.02 + groundAge * 0.20;
-        coinState.rx = lerp(coinState.rx, nearestFlatRx, edgeSnap);
-        coinState.ry = lerp(coinState.ry, nearestFlatRy, edgeSnap);
+        coinState.tumble = lerp(coinState.tumble, nearestFlat, edgeSnap);
 
-        coinState.vrx *= Math.pow(0.86 - groundAge * 0.10, dt * 60);
-        coinState.vry *= Math.pow(0.83 - groundAge * 0.10, dt * 60);
+        coinState.vTumble *= Math.pow(0.85 - groundAge * 0.10, dt * 60);
         coinState.vrz *= Math.pow(0.92 - groundAge * 0.04, dt * 60);
 
-        const precession = edgeFactor * (1 - groundAge) * 160 * Math.sign(coinState.vrx || 1);
-        coinState.vrz += precession * dt;
+        // 立緣搖擺:接觸點繞圈進動、越攤平晃得越急(歐拉盤效應)
+        coinState.axisAngle += coinState.spinDir * edgeFactor * (2.4 + groundAge * 3.2) * dt;
+        coinState.vrz += coinState.spinDir * edgeFactor * (1 - groundAge) * 40 * dt;
 
-        const rollScale = edgeFactor * (1 - groundAge * 0.7) * coinState.radius * 0.22 * (Math.PI / 180);
-        const rollVx = -coinState.vry * rollScale;
-        const rollVy = coinState.vrx * rollScale;
+        // 立緣滾動:沿垂直於轉軸的方向帶動位移
+        const rollSpeed = coinState.vTumble * (Math.PI / 180) * coinState.radius * edgeFactor * 0.22;
+        const rollVx = -Math.sin(coinState.axisAngle) * rollSpeed;
+        const rollVy = Math.cos(coinState.axisAngle) * rollSpeed;
         const blend = 0.10;
         coinState.vx = lerp(coinState.vx, rollVx, blend);
         coinState.vy = lerp(coinState.vy, rollVy, blend);
@@ -778,26 +785,25 @@
         coinState.vy *= Math.pow(groundFriction, dt * 60);
 
         const flatSnap = 0.03 + lateBrake * 0.08;
-        const nearestFlatRx = Math.round(coinState.rx / 180) * 180;
-        const nearestFlatRy = Math.round(coinState.ry / 180) * 180;
-        coinState.rx = lerp(coinState.rx, nearestFlatRx, flatSnap);
-        coinState.ry = lerp(coinState.ry, nearestFlatRy, flatSnap);
+        const nearestFlat = Math.round(coinState.tumble / 180) * 180;
+        coinState.tumble = lerp(coinState.tumble, nearestFlat, flatSnap);
 
-        coinState.vrx *= Math.pow(0.78 - lateBrake * 0.12, dt * 60);
-        coinState.vry *= Math.pow(0.68 - lateBrake * 0.12, dt * 60);
-        coinState.vrz *= Math.pow(0.92 - lateBrake * 0.06, dt * 60);
+        coinState.vTumble *= Math.pow(0.72 - lateBrake * 0.12, dt * 60);
+        coinState.vrz *= Math.pow(0.90 - lateBrake * 0.06, dt * 60);
       }
     }
 
-    coinState.rx += coinState.vrx * dt;
-    coinState.ry += coinState.vry * dt;
+    // 空中翻轉節奏帶微調變:轉軸偏離主軸時,視覺上的翻面速率本來就不均勻
+    const tumbleRate = airborne
+      ? coinState.vTumble * (1 + coinState.wobbleAmp * Math.sin(wobble * 4.1 + coinState.seed))
+      : coinState.vTumble;
+    coinState.tumble += tumbleRate * dt;
     coinState.rz += coinState.vrz * dt;
 
     if (elapsed > coinState.minDuration && !airborne) {
-      const edgeAmount = getEdgeAmount(coinState.rx, coinState.ry);
-      const spinSpeed = Math.abs(coinState.vrx) + Math.abs(coinState.vry);
+      const edgeAmount = getEdgeAmount(coinState.tumble);
       const moveSpeed = Math.hypot(coinState.vx, coinState.vy);
-      if (edgeAmount < 0.12 && spinSpeed < 50 && moveSpeed < 15) {
+      if (edgeAmount < 0.12 && Math.abs(coinState.vTumble) < 90 && moveSpeed < 15) {
         finishSettle();
         return;
       }
@@ -810,30 +816,29 @@
 
   function resolveWallCollisions() {
     const bounce = 0.72;
-    const spinBounce = 0.85;
     let hit = false;
 
     if (coinState.x < state.bounds.minX) {
       coinState.x = state.bounds.minX;
       coinState.vx = Math.abs(coinState.vx) * bounce;
-      coinState.vry = -coinState.vry * spinBounce + randomBetween(-120, 120);
+      reflectSpin("x");
       hit = true;
     } else if (coinState.x > state.bounds.maxX) {
       coinState.x = state.bounds.maxX;
       coinState.vx = -Math.abs(coinState.vx) * bounce;
-      coinState.vry = -coinState.vry * spinBounce + randomBetween(-120, 120);
+      reflectSpin("x");
       hit = true;
     }
 
     if (coinState.y < state.bounds.minY) {
       coinState.y = state.bounds.minY;
       coinState.vy = Math.abs(coinState.vy) * bounce;
-      coinState.vrx = -coinState.vrx * spinBounce + randomBetween(-120, 120);
+      reflectSpin("y");
       hit = true;
     } else if (coinState.y > state.bounds.maxY) {
       coinState.y = state.bounds.maxY;
       coinState.vy = -Math.abs(coinState.vy) * bounce;
-      coinState.vrx = -coinState.vrx * spinBounce + randomBetween(-120, 120);
+      reflectSpin("y");
       hit = true;
     }
 
@@ -842,11 +847,17 @@
     }
   }
 
+  // 撞牆時鏡射轉軸(角動量是贗向量),扣一點轉速並加少許接觸雜訊
+  function reflectSpin(wall) {
+    coinState.axisAngle =
+      (wall === "x" ? -coinState.axisAngle : Math.PI - coinState.axisAngle) + randomBetween(-0.15, 0.15);
+    coinState.vTumble *= 0.85;
+    coinState.vrz = -coinState.vrz * 0.85;
+  }
+
   function finishSettle() {
-    const result = getVisibleSide(coinState.rx, coinState.ry);
-    const target = getNaturalSettleAngles(coinState.rx, coinState.ry, result);
-    coinState.rx = target.rx + randomBetween(-4, 4);
-    coinState.ry = target.ry + randomBetween(-3, 3);
+    const result = getVisibleSide(coinState.tumble);
+    coinState.tumble = nearestAngle(coinState.tumble, result === "heads" ? 0 : 180) + randomBetween(-4, 4);
     coinState.result = result;
     coinState.z = 0;
     finishThrow();
@@ -858,9 +869,10 @@
     coinState.vx = 0;
     coinState.vy = 0;
     coinState.vz = 0;
-    coinState.vrx = 0;
-    coinState.vry = 0;
+    coinState.vTumble = 0;
     coinState.vrz = 0;
+    coinState.tumble = ((coinState.tumble % 360) + 360) % 360;
+    coinState.rz = ((coinState.rz % 360) + 360) % 360;
     elements.quickFlipButton.disabled = false;
     elements.coinScene.classList.remove("is-flying");
 
@@ -875,24 +887,27 @@
   }
 
   function renderCoin() {
-    const radius = coinState.radius;
+    const radius = coinState.visualRadius || coinState.radius;
     const lift = coinState.z * 0.22;
     const scale = 1 + coinState.z / 1050;
     const sceneX = coinState.x - radius;
     const sceneY = coinState.y - radius - lift;
     const coinDepth = Math.max(4, radius * 0.064);
-    const rimWidth = Math.max(2.1, (Math.PI * 2 * Math.max(36, radius - 3)) / 144);
+    // 質感光環:rim 刻意排在幣面外側一小圈(Dino 2026-07-04 指定,間距隨幣徑縮放)
+    const rimRadius = radius + clamp(radius * 0.2, 5, 9);
+    const rimWidth = Math.max(2.1, (Math.PI * 2 * rimRadius) / 144);
     const rimOpacity = 1;
 
     elements.coinScene.style.transform = `translate3d(${sceneX}px, ${sceneY}px, 0) scale(${scale})`;
     elements.coinScene.style.setProperty("--coin-depth", `${coinDepth}px`);
     elements.coinScene.style.setProperty("--coin-depth-half", `${coinDepth / 2}px`);
     elements.coinScene.style.setProperty("--coin-depth-half-neg", `${-coinDepth / 2}px`);
-    elements.coinScene.style.setProperty("--rim-offset", `${-(radius - 3)}px`);
+    elements.coinScene.style.setProperty("--rim-offset", `${-rimRadius}px`);
     elements.coinScene.style.setProperty("--rim-width", `${rimWidth}px`);
     elements.coinScene.style.setProperty("--rim-opacity", String(rimOpacity));
-    elements.coin.style.setProperty("--rx", `${coinState.rx}deg`);
-    elements.coin.style.setProperty("--ry", `${coinState.ry}deg`);
+    elements.coin.style.setProperty("--ax", Math.cos(coinState.axisAngle).toFixed(4));
+    elements.coin.style.setProperty("--ay", Math.sin(coinState.axisAngle).toFixed(4));
+    elements.coin.style.setProperty("--tumble", `${coinState.tumble}deg`);
     elements.coin.style.setProperty("--rz", `${coinState.rz}deg`);
 
     const shadowScale = clamp(1.1 - coinState.z / 780, 0.56, 1.12);
@@ -1113,34 +1128,12 @@
     return Math.round((current - targetModulo) / 360) * 360 + targetModulo;
   }
 
-  function getVisibleSide(rx, ry) {
-    const frontNormalZ = Math.cos(degToRad(rx)) * Math.cos(degToRad(ry));
-    return frontNormalZ >= 0 ? "heads" : "tails";
+  function getVisibleSide(tumble) {
+    return Math.cos(degToRad(tumble)) >= 0 ? "heads" : "tails";
   }
 
-  function getEdgeAmount(rx, ry) {
-    return clamp(Math.max(Math.abs(Math.sin(degToRad(rx))), Math.abs(Math.sin(degToRad(ry)))), 0, 1);
-  }
-
-  function getNaturalSettleAngles(rx, ry, result) {
-    const candidates = [];
-    const faceTargets = [0, 180];
-
-    faceTargets.forEach((rxTarget) => {
-      faceTargets.forEach((ryTarget) => {
-        if (getVisibleSide(rxTarget, ryTarget) !== result) {
-          return;
-        }
-
-        const targetRx = nearestAngle(rx, rxTarget);
-        const targetRy = nearestAngle(ry, ryTarget);
-        const score = Math.abs(targetRx - rx) * 1.15 + Math.abs(targetRy - ry);
-        candidates.push({ rx: targetRx, ry: targetRy, score });
-      });
-    });
-
-    candidates.sort((a, b) => a.score - b.score);
-    return candidates[0];
+  function getEdgeAmount(tumble) {
+    return Math.abs(Math.sin(degToRad(tumble)));
   }
 
   function degToRad(degrees) {

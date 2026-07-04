@@ -363,8 +363,7 @@ button {
   outline: none;
   transform-style: preserve-3d;
   transform:
-    rotateX(var(--rx, 0deg))
-    rotateY(var(--ry, 0deg))
+    rotate3d(var(--ax, 1), var(--ay, 0), 0, var(--tumble, 0deg))
     rotateZ(var(--rz, 0deg));
   will-change: transform;
 }
