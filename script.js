@@ -37,7 +37,7 @@
     speedMax: 1450,       // 角速上限(每幀轉角過大會頻閃,壓在 ~24°/frame 內)
     betaDeg: 78,          // 錐半角:90=乾淨端對端翻;越小越搖;~78=自然帶晃
     betaJitter: 6,        // 每擲 beta 抖動範圍
-    inPlaneSpread: 32,    // 翻轉軸 L 在螢幕平面內偏離水平的範圍(deg)
+    throwAxisJitter: 5,   // 滑動法線的小幅誤差，保留自然手感
     leanMax: 12,          // L 偏離螢幕平面(朝鏡頭)的小傾角(deg),增加每擲差異
     phiRate: 0.35,        // 面內自旋相對主角速的比例
     groundSpinDamp: 0.7,  // 落地後角速每幀衰減
@@ -688,6 +688,7 @@
     const moveSpeed = clamp(rawForce, 200, 650);
     const spinForce = clamp(rawForce, 260, 1600);
     const direction = Math.atan2(vy || -1, vx || 1);
+    const releaseNormal = { x: coinState.nx, y: coinState.ny, z: coinState.nz };
 
     coinState.phase = "throwing";
     coinState.result = null;
@@ -698,13 +699,15 @@
     // 無力矩進動模型:出手選定一條「固定在世界空間」的翻轉軸 L(整段飛行不變 → 角動量守恆),
     // 面法線繞 L 以固定錐半角 beta 打錐形 → 天然邊翻邊晃(Diaconis/費曼盤)。
     // L 需大致水平(在螢幕平面內)硬幣才會真的翻正反面;beta≈78° 產生自然搖擺。
-    coinState.spinDir = randomSign();
-    coinState.omega = coinState.spinDir *
-      clamp(FLIP.speedBase + spinForce * FLIP.speedCoupling, 0, FLIP.speedMax);
+    // 手指滑動會在與滑動方向垂直的軸上施加角動量；反向投擲時，
+    // 翻滾方向也會自然反轉，不再與平移方向各自隨機。
+    coinState.spinDir = 1;
+    coinState.omega = clamp(FLIP.speedBase + spinForce * FLIP.speedCoupling, 0, FLIP.speedMax);
     coinState.beta = degToRad(clamp(FLIP.betaDeg + randomBetween(-FLIP.betaJitter, FLIP.betaJitter), 55, 90));
 
     // L 以水平軸為底,在螢幕平面內偏一點、再朝鏡頭小幅傾斜 → 每擲的翻轉軸都不同
-    const inPlane = degToRad(randomBetween(-FLIP.inPlaneSpread, FLIP.inPlaneSpread));
+    const inPlane = direction + Math.PI / 2 +
+      degToRad(randomBetween(-FLIP.throwAxisJitter, FLIP.throwAxisJitter));
     const lean = degToRad(randomBetween(-FLIP.leanMax, FLIP.leanMax));
     const cl = Math.cos(lean);
     coinState.Lx = cl * Math.cos(inPlane);
@@ -712,7 +715,7 @@
     coinState.Lz = Math.sin(lean);
     normalizeL();
 
-    coinState.psi = randomBetween(0, 360);   // 隨機初始相位 → 公平 50/50
+    coinState.psi = phaseForNormal(releaseNormal); // 延續拖曳姿態，避免放手瞬間跳面
     coinState.phi = randomBetween(0, 360);
     coinState.startTime = performance.now();
     coinState.lastTime = coinState.startTime;
@@ -1165,6 +1168,23 @@
     coinState.nz = cb * Lz + sb * (cp * e1z + sp * e2z);
   }
 
+  function phaseForNormal(normal) {
+    const Lx = coinState.Lx, Ly = coinState.Ly, Lz = coinState.Lz;
+    const ax = Math.abs(Lz) < 0.9 ? 0 : 1;
+    const az = Math.abs(Lz) < 0.9 ? 1 : 0;
+    let e1x = -az * Ly;
+    let e1y = az * Lx - ax * Lz;
+    let e1z = ax * Ly;
+    const e1len = Math.hypot(e1x, e1y, e1z) || 1;
+    e1x /= e1len; e1y /= e1len; e1z /= e1len;
+    const e2x = Ly * e1z - Lz * e1y;
+    const e2y = Lz * e1x - Lx * e1z;
+    const e2z = Lx * e1y - Ly * e1x;
+    const alongE1 = normal.x * e1x + normal.y * e1y + normal.z * e1z;
+    const alongE2 = normal.x * e2x + normal.y * e2y + normal.z * e2z;
+    return Math.atan2(alongE2, alongE1) * 180 / Math.PI;
+  }
+
   // 靜置:硬幣平躺、指定面朝鏡頭,帶一點裝飾性微傾不死板
   function setRestOrientation(face) {
     coinState.result = face;
@@ -1223,10 +1243,6 @@
 
   function randomBetween(min, max) {
     return min + Math.random() * (max - min);
-  }
-
-  function randomSign() {
-    return Math.random() < 0.5 ? -1 : 1;
   }
 
   function debounce(callback, wait) {
